@@ -9,16 +9,22 @@ class Table:
         if not isinstance(connection, pg._psycopg.connection):
             raise ex.DbConnectionError()
         self.connection = connection
+        self.table_name = table_name
 
-        is_exists_table = self.__is_table_exists__('person')
+        is_exists_table = Table.is_table_exists(self.table_name)
         if create_table and is_exists_table:
             raise ex.DbTableAlreadyExists(table_name=table_name)
         if not create_table and not is_exists_table:
             raise ex.DbTableIsNotExists(table_name=table_name)
 
-    def __is_table_exists__(self, table_name):
+    def run_dml(connection, query):
+        with connection.cursor(cursor_factory=NamedTupleCursor) as curs:
+            curs.execute(query)
+            connection.commit()
+
+    def is_table_exists(connection, table_name):
         is_table_exists = False
-        with self.connection.cursor(cursor_factory=NamedTupleCursor) as curs:
+        with connection.cursor(cursor_factory=NamedTupleCursor) as curs:
             curs.execute('SELECT count(1)'
                          '  FROM information_schema.tables'
                          f' WHERE table_name LIKE \'{table_name}\''
@@ -27,6 +33,9 @@ class Table:
                          ' LIMIT 1;')
             is_table_exists = curs.fetchone()[0]
         return is_table_exists
+
+    def drop_table(connection, table_name):
+
 
 
 class Person(Table):
@@ -43,7 +52,7 @@ class Person(Table):
                              ');')
                 connection.commit()
 
-    def insert(self, first_name : str, last_name : str):
+    def insert(self, first_name: str, last_name: str, email: str, phones: list) -> int:
         pass
 
     def delete(self):
