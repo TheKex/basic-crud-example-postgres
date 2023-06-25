@@ -20,10 +20,18 @@ class Table:
         if create_table:
             self.create_table()
 
-    def run_dml(self, query):
+    def run_dml(self, query : str):
         with self.connection.cursor() as curs:
             curs.execute(query)
             self.connection.commit()
+
+    def run_dml(self, query : str, params : tuple):
+        res = None
+        with self.connection.cursor() as curs:
+            curs.execute(query, params)
+            res = curs.fetchall()
+            self.connection.commit()
+        return res
 
     def create_table(self):
         if self.is_table_exists(self.table_name):
@@ -38,7 +46,7 @@ class Table:
                          '   AND table_schema NOT IN (\'information_schema\', \'pg_catalog\')'
                          '   AND table_type = \'BASE TABLE\''
                          ' LIMIT 1;')
-            is_table_exists = curs.fetchone()[0]
+            is_table_exists = curs.fetchall()
         return is_table_exists
 
     def drop_table(self, table_name: str = None):
@@ -47,6 +55,27 @@ class Table:
         if self.is_table_exists(table_name):
             query = f'DROP TABLE {table_name}'
             self.run_dml(query)
+
+    def insert(self, **fields) -> int:
+        query = f"INSERT INTO person ({','.join(fields.keys())}) VALUES (%s, %s, %s) RETURNING id"
+        user_id = self.run_dml(query, tuple(fields.values()))
+        return user_id[0][0]
+
+    def delete(self, row_id):
+        query = f"DELETE FROM {self.table_name} WHERE id = %s RETURNING id"
+        delete_id = self.run_dml(query, (row_id,))
+        return delete_id[0][0]
+
+    def update(self, row_id: int, **fields):
+        query = 'UPDATE person SET '
+        fields_sql = ' '.join(field + ' = %s' for field, value in fields.items() if value is not None)
+        if fields_sql is None:
+            return None
+        query += fields_sql + ' WHERE id = %s RETURNING id'
+        args = list(str(field) for field in fields.values() if field is not None)
+        args += str(row_id)
+        updated_ids = self.run_dml(query, tuple(args))
+        return [ins_id[0] for ins_id in updated_ids]
 
 
 class Person(Table):
@@ -66,14 +95,13 @@ class Person(Table):
                 ');'
         self.run_dml(query)
 
-    def insert(self, first_name: str, last_name: str, email: str, phones: list) -> int:
-        pass
+    def insert(self, first_name: str, last_name: str, email: str, phones: list = None) -> int:
+        user_id = super().insert(first_name=first_name, last_name=last_name, email=email)
+        return user_id
 
-    def delete(self):
-        pass
-
-    def update(self, row_id: int):
-        pass
+    def update(self, row_id: int, first_name: str = None, last_name: str = None, email: str = None) -> list:
+        user_ids = super().update(row_id, first_name=first_name, last_name=last_name, email=email)
+        return user_ids
 
     def search(self, **kwargs):
         pass

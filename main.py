@@ -28,11 +28,20 @@ if __name__ == '__main__':
 
         pers = Person(conn, False)
         numb = Phone(conn, False)
-        pers.drop_table()
-        numb.drop_table()
-        pers.create_table()
-        numb.create_table()
+        # pers.drop_table()
+        # # numb.drop_table()
+        # pers.create_table()
+        # numb.create_table()
         print(pers.connection)
+        user_id = pers.insert('Alex', 'Tomilin', 'al.tomilin@mail.ru')
+
+        print(f"user_id = {user_id}")
+
+        del_id = pers.delete(user_id)
+        print(f"del_id = {del_id}")
+
+        upd_id = pers.update(1, first_name='Alexey')
+        print(f"upd_id = {upd_id}")
 
 
     except Exception as ex:
