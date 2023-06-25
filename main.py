@@ -28,6 +28,10 @@ if __name__ == '__main__':
 
         pers = Person(conn, False)
         numb = Phone(conn, False)
+        pers.drop_table()
+        numb.drop_table()
+        pers.create_table()
+        numb.create_table()
         print(pers.connection)
 
 
