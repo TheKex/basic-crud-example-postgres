@@ -1,4 +1,3 @@
-
 class DbConnectionError(Exception):
     pass
 
@@ -17,3 +16,5 @@ class DbTableIsNotExists(Exception):
         super().__init__(self.message)
 
 
+class DbColumnTypeError(Exception):
+    pass

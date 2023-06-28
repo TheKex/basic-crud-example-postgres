@@ -1,4 +1,7 @@
+import re
+
 import psycopg2 as pg
+from psycopg2 import sql
 from psycopg2.extras import NamedTupleCursor
 
 import exceptions as ex
@@ -42,10 +45,10 @@ class Table:
         with self.connection.cursor() as curs:
             curs.execute('SELECT count(1)'
                          '  FROM information_schema.tables'
-                         f' WHERE table_name = \'{table_name}\''
+                         f' WHERE table_name = %s'
                          '   AND table_schema NOT IN (\'information_schema\', \'pg_catalog\')'
                          '   AND table_type = \'BASE TABLE\''
-                         ' LIMIT 1;')
+                         ' LIMIT 1;', (table_name,))
             is_table_exists = curs.fetchall()
         return is_table_exists
 
@@ -53,12 +56,20 @@ class Table:
         if table_name is None:
             table_name = self.table_name
         if self.is_table_exists(table_name):
-            query = f'DROP TABLE {table_name}'
-            self.run_dml(query)
+            query = f'DROP TABLE %s'
+            self.run_dml(query, (table_name,))
 
     def insert(self, **fields) -> int:
-        query = f"INSERT INTO person ({','.join(fields.keys())}) VALUES (%s, %s, %s) RETURNING id"
-        user_id = self.run_dml(query, tuple(fields.values()))
+        col_names = sql.SQL(', ').join(sql.Identifier(field) for field in fields.keys())
+        place_holders = sql.SQL(', ').join(sql.Placeholder() * len(fields.keys()))
+
+        query = sql.SQL("INSERT INTO {table} ({columns}) VALUES ({values}) RETURNING id").format(
+            table=sql.Identifier(self.table_name),
+            columns=col_names,
+            values=place_holders
+        )
+        values = sql.SQL(', ').join(map(sql.Literal, fields.values()))
+        user_id = self.run_dml(query, values)
         return user_id[0][0]
 
     def delete(self, row_id):
@@ -67,15 +78,18 @@ class Table:
         return delete_id[0][0]
 
     def update(self, row_id: int, **fields):
-        query = 'UPDATE person SET '
-        fields_sql = ' '.join(field + ' = %s' for field, value in fields.items() if value is not None)
+        query = f'UPDATE {self.table_name} SET '
+        fields_sql = ' '.join(field + ' = %s' for field, value in fields.items())
         if fields_sql is None:
             return None
         query += fields_sql + ' WHERE id = %s RETURNING id'
-        args = list(str(field) for field in fields.values() if field is not None)
+        args = list(str(field) for field in fields.values())
         args += str(row_id)
         updated_ids = self.run_dml(query, tuple(args))
         return [ins_id[0] for ins_id in updated_ids]
+
+    def select(self, ):
+        pass
 
 
 class Person(Table):
@@ -95,13 +109,13 @@ class Person(Table):
                 ');'
         self.run_dml(query)
 
-    def insert(self, first_name: str, last_name: str, email: str, phones: list = None) -> int:
+    def insert(self, first_name: str, last_name: str, email: str) -> int:
         user_id = super().insert(first_name=first_name, last_name=last_name, email=email)
         return user_id
 
     def update(self, row_id: int, first_name: str = None, last_name: str = None, email: str = None) -> list:
-        user_ids = super().update(row_id, first_name=first_name, last_name=last_name, email=email)
-        return user_ids
+        user_id = super().update(row_id, first_name=first_name, last_name=last_name, email=email)
+        return user_id
 
     def search(self, **kwargs):
         pass
@@ -120,14 +134,24 @@ class Phone(Table):
                 ');'
         self.run_dml(query)
 
-    def insert(self):
-        pass
+    @staticmethod
+    def __check_phone__(phone):
+        """
+        Check, is phone match pattern +79999999999 - 11 numbers and '+' in position 0
+        :param phone: str
+        :return: bool
+        """
+        return len(phone) == 12 and re.match(r"\+7\d{10}", phone)
 
-    def delete(self):
-        pass
+    def insert(self, phone_number: str, person_id: int):
+        if not Phone.__check_phone__(phone_number):
+            raise ex.DbColumnTypeError(f'Phone number {phone_number} does not match pattern +79999999999')
+        phone_id = super().insert(phone_number=phone_number, person=person_id)
+        return phone_id
 
-    def update(self, row_id: int):
-        pass
+    def update(self, row_id: int, phone_number: str = None, person_id: int = None):
+        user_id = super().update(row_id, phone_number=phone_number, person=person_id)
+        return user_id
 
     def search(self, **kwargs):
         pass

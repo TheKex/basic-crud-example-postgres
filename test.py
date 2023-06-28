@@ -2,6 +2,7 @@ from os import getenv
 from dotenv import load_dotenv
 
 import psycopg2
+from psycopg2 import sql
 from psycopg2.extras import NamedTupleCursor
 
 from db_tools import Person, Phone
@@ -27,25 +28,10 @@ if __name__ == '__main__':
             print('Что-то пошло не так')
             conn.close()
 
-        pers = Person(conn, False)
-        numb = Phone(conn, False)
-        # pers.drop_table()
-        # # numb.drop_table()
-        # pers.create_table()
-        # numb.create_table()
-        print(pers.connection)
-        user_id = pers.insert('Alex', 'Tomilin', 'al.tomilin@mail.ru')
+        values = sql.SQL(', ').join(map(sql.Literal, [1, 2, 3]))
 
-        print(f"user_id = {user_id}")
-
-        del_id = pers.delete(user_id)
-        print(f"del_id = {del_id}")
-
-        upd_id = pers.update(1, first_name='Alexey')
-        print(f"upd_id = {upd_id}")
 
         conn.close()
-
     except Exception as ex:
         # в случае сбоя подключения будет выведено сообщение в STDOUT
         raise ex
