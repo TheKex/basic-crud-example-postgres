@@ -23,12 +23,12 @@ class Table:
         if create_table:
             self.create_table()
 
-    def run_dml(self, query : str):
+    def run_ddl(self, query: str):
         with self.connection.cursor() as curs:
             curs.execute(query)
             self.connection.commit()
 
-    def run_dml(self, query : str, params : tuple):
+    def run_dml(self, query: str, params: tuple):
         res = None
         with self.connection.cursor() as curs:
             curs.execute(query, params)
@@ -50,14 +50,14 @@ class Table:
                          '   AND table_type = \'BASE TABLE\''
                          ' LIMIT 1;', (table_name,))
             is_table_exists = curs.fetchall()
-        return is_table_exists
+        return is_table_exists[0][0] == 1
 
     def drop_table(self, table_name: str = None):
         if table_name is None:
             table_name = self.table_name
         if self.is_table_exists(table_name):
             query = f'DROP TABLE %s'
-            self.run_dml(query, (table_name,))
+            self.run_ddl(query, (table_name,))
 
     def insert(self, **fields) -> int:
         col_names = sql.SQL(', ').join(sql.Identifier(field) for field in fields.keys())
@@ -68,25 +68,33 @@ class Table:
             columns=col_names,
             values=place_holders
         )
-        values = sql.SQL(', ').join(map(sql.Literal, fields.values()))
+        values = tuple(fields.values())
         user_id = self.run_dml(query, values)
         return user_id[0][0]
 
     def delete(self, row_id):
-        query = f"DELETE FROM {self.table_name} WHERE id = %s RETURNING id"
+        query = sql.SQL("DELETE FROM {table_name} WHERE id = {id} RETURNING id").format(
+            table_name=sql.Identifier(self.table_name),
+            id=sql.Placeholder()
+        )
         delete_id = self.run_dml(query, (row_id,))
         return delete_id[0][0]
 
     def update(self, row_id: int, **fields):
-        query = f'UPDATE {self.table_name} SET '
-        fields_sql = ' '.join(field + ' = %s' for field, value in fields.items())
-        if fields_sql is None:
-            return None
-        query += fields_sql + ' WHERE id = %s RETURNING id'
-        args = list(str(field) for field in fields.values())
+        query = sql.SQL("UPDATE {table_name} SET {column_values} WHERE id = {id} RETURNING id").format(
+            table_name=sql.Identifier(self.table_name),
+            column_values=sql.SQL(",\n").join([
+                                sql.SQL("{field} = {value}").format(
+                                    field=sql.Identifier(key),
+                                    value=sql.Placeholder()
+                                ) for key in fields.keys() if fields[key] is not None
+                            ]),
+            id=sql.Placeholder()
+        )
+        args = list(value for value in fields.values() if value is not None)
         args += str(row_id)
-        updated_ids = self.run_dml(query, tuple(args))
-        return [ins_id[0] for ins_id in updated_ids]
+        updated_id = self.run_dml(query, tuple(args))
+        return updated_id[0][0]
 
     def select(self, ):
         pass
@@ -107,7 +115,7 @@ class Person(Table):
                 '    last_name      VARCHAR(60) NOT NULL,'\
                 '    email          VARCHAR(100) NOT NULL'\
                 ');'
-        self.run_dml(query)
+        self.run_ddl(query)
 
     def insert(self, first_name: str, last_name: str, email: str) -> int:
         user_id = super().insert(first_name=first_name, last_name=last_name, email=email)
@@ -132,7 +140,7 @@ class Phone(Table):
                 '    phone_number   varchar(16) NOT NULL,'\
                 '    person         integer     NOT NULL REFERENCES person(id)'\
                 ');'
-        self.run_dml(query)
+        self.run_ddl(query)
 
     @staticmethod
     def __check_phone__(phone):
@@ -147,11 +155,11 @@ class Phone(Table):
         if not Phone.__check_phone__(phone_number):
             raise ex.DbColumnTypeError(f'Phone number {phone_number} does not match pattern +79999999999')
         phone_id = super().insert(phone_number=phone_number, person=person_id)
-        return phone_id
+        return phone_id[0][0]
 
     def update(self, row_id: int, phone_number: str = None, person_id: int = None):
         user_id = super().update(row_id, phone_number=phone_number, person=person_id)
-        return user_id
+        return user_id[0][0]
 
     def search(self, **kwargs):
         pass

@@ -16,21 +16,21 @@ if __name__ == '__main__':
 
     print('postgres', db_user, db_pass, db_host, sep=' *** ')
     try:
-        # пытаемся подключиться к базе данных
+
         conn = psycopg2.connect(dbname='postgres', user=db_user, password=db_pass, host=db_host, port=db_port)
+        # пытаемся подключиться к базе данных
+        values = {
+            "a": 1,
+            "b": 2
+        }
+        query = sql.SQL(",\n").join([
+            sql.SQL("{field} = {value}").format(
+                field=sql.Identifier(key),
+                value=sql.Placeholder()
+            ) for key in values.keys()
+        ])
 
-        try:
-            with conn.cursor(cursor_factory=NamedTupleCursor) as curs:
-                curs.execute('SELECT * FROM public.employee;')
-                all_users = curs.fetchall()
-                print(all_users)
-        except:
-            print('Что-то пошло не так')
-            conn.close()
-
-        values = sql.SQL(', ').join(map(sql.Literal, [1, 2, 3]))
-
-
+        print(query.as_string(conn))
         conn.close()
     except Exception as ex:
         # в случае сбоя подключения будет выведено сообщение в STDOUT
