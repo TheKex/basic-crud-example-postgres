@@ -101,8 +101,10 @@ class Table:
 
 
 class Person(Table):
+    __tablename__ = 'person'
+
     def __init__(self, connection: pg._psycopg.connection, create_table: bool = False):
-        super(Person, self).__init__(connection, create_table, 'person')
+        super(Person, self).__init__(connection, create_table, Person.__tablename__)
 
         if create_table:
             self.create_table()
@@ -125,13 +127,27 @@ class Person(Table):
         user_id = super().update(row_id, first_name=first_name, last_name=last_name, email=email)
         return user_id
 
+    def delete(self, row_id):
+        # Удаление телефонов клиента
+        query = sql.SQL("DELETE FROM {person} where person = {person_id}").format(
+            person=sql.Identifier(Phone.__tablename__),
+            person_id=sql.Placeholder()
+        )
+        phones = super().run_dml(query, (row_id,))
+
+        # Удаление клиента
+        res = super().delete(row_id)
+        return res[0][0]
+
     def search(self, **kwargs):
         pass
 
 
 class Phone(Table):
+    __tablename__ = 'phone_number'
+
     def __init__(self, connection: pg._psycopg.connection, create_table: bool = False):
-        super(Phone, self).__init__(connection, create_table, 'phone_number')
+        super(Phone, self).__init__(connection, create_table, Phone.__tablename__)
 
     def create_table(self):
         super().create_table()
@@ -161,6 +177,27 @@ class Phone(Table):
         user_id = super().update(row_id, phone_number=phone_number, person=person_id)
         return user_id[0][0]
 
-    def search(self, **kwargs):
+    def delete_by_person(self, person_id):
+        query = sql.SQL("DELETE FROM {person} where person = {person_id}").format(
+            person=sql.Identifier(Person.__tablename__),
+            person_id=sql.Placeholder()
+        )
+        res = super().run_dml(query, (person_id,))
+        return res
+
+    def search(self, person_id=None, phone=None):
+        if person_id is None and phone is None:
+            return None
+
+        conditions = "person = %s" if person_id is not None else None
+        conditions += " AND " if person_id and phone else None
+        conditions += "phone = %s" if phone is not None else None
+
+        query = sql.SQL("SELECT id FROM {phones} where {conditions}").format(
+            phones=sql.Identifier(self.table_name),
+            conditions=sql.SQL(conditions)
+        )
+
+        res = super().run_dml(query, )
         pass
 

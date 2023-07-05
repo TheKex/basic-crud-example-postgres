@@ -31,6 +31,16 @@ if __name__ == '__main__':
         ])
 
         print(query.as_string(conn))
+
+        person_id = 12
+        phone = '+123123123'
+
+        conditions = "person = %s" if person_id is not None else None
+        conditions += " AND " if person_id and phone else None
+        conditions += "phone = %s" if phone is not None else None
+
+        print(sql.SQL(conditions).as_string(conn))
+
         conn.close()
     except Exception as ex:
         # в случае сбоя подключения будет выведено сообщение в STDOUT
