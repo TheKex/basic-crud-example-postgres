@@ -7,12 +7,20 @@ from psycopg2.extras import NamedTupleCursor
 
 from db_tools import Person, Phone
 
+
+def search(person_id=None, phone=None):
+    print(tuple([el for el in [person_id, phone] if el is not None]))
+
+
 if __name__ == '__main__':
     load_dotenv()
     db_host = getenv('DB_HOST')
     db_port = getenv('DB_PORT')
     db_user = getenv('DB_USER')
     db_pass = getenv('DB_PASS')
+
+    search(123)
+
 
     print('postgres', db_user, db_pass, db_host, sep=' *** ')
     try:

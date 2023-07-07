@@ -139,8 +139,21 @@ class Person(Table):
         res = super().delete(row_id)
         return res[0][0]
 
-    def search(self, **kwargs):
-        pass
+    def search(self, first_name=None, last_name=None, email=None, phone=None):
+        args = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": email,
+            "phone": phone
+        }
+        conditions = ["{field} = %s".format(field=field) for field, value in args.items() if value is not None]
+        conditions = " AND ".join(conditions)
+        queue = "SELECT *" \
+                "  FROM {person} " + \
+                "       JOIN {phone} " if args['phone'] is not None else None + \
+                " WHERE {conditions} "
+        res = super().run_dml(queue, tuple([value for value in args.values() if value is not None]))
+        return res
 
 
 class Phone(Table):
@@ -185,19 +198,37 @@ class Phone(Table):
         res = super().run_dml(query, (person_id,))
         return res
 
-    def search(self, person_id=None, phone=None):
+    @staticmethod
+    def __get_conditions__(person_id, phone):
         if person_id is None and phone is None:
             return None
-
         conditions = "person = %s" if person_id is not None else None
         conditions += " AND " if person_id and phone else None
         conditions += "phone = %s" if phone is not None else None
+        return conditions, tuple([el for el in [person_id, phone] if el is not None])
+
+    def delete_by_fields(self, person_id=None, phone=None):
+        conditions, params = Phone.__get_conditions__(person_id, phone)
+        if conditions is None:
+            return None
+        query = sql.SQL("DELETE FROM {phones} where {conditions} RETURNING id").format(
+            phones=sql.Identifier(self.table_name),
+            conditions=sql.SQL(conditions)
+        )
+
+        res = super().run_dml(query, params)
+        return [item[0] for item in res]
+
+    def search(self, person_id=None, phone=None):
+        conditions, params = Phone.__get_conditions__(person_id, phone)
+        if conditions is None:
+            return None
 
         query = sql.SQL("SELECT id FROM {phones} where {conditions}").format(
             phones=sql.Identifier(self.table_name),
             conditions=sql.SQL(conditions)
         )
 
-        res = super().run_dml(query, )
-        pass
+        res = super().run_dml(query, params)
+        return res
 
