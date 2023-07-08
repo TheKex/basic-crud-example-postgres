@@ -23,9 +23,9 @@ class Table:
         if create_table:
             self.create_table()
 
-    def run_ddl(self, query: str):
+    def run_ddl(self, query: str, params: tuple = None):
         with self.connection.cursor() as curs:
-            curs.execute(query)
+            curs.execute(query, params)
             self.connection.commit()
 
     def run_dml(self, query: str, params: tuple):
@@ -40,8 +40,10 @@ class Table:
         if self.is_table_exists(self.table_name):
             raise ex.DbTableAlreadyExists(table_name=self.table_name)
 
-    def is_table_exists(self, table_name):
+    def is_table_exists(self, table_name=None):
         is_table_exists = False
+        if table_name is None:
+            table_name = self.table_name
         with self.connection.cursor() as curs:
             curs.execute('SELECT count(1)'
                          '  FROM information_schema.tables'
@@ -56,8 +58,10 @@ class Table:
         if table_name is None:
             table_name = self.table_name
         if self.is_table_exists(table_name):
-            query = f'DROP TABLE %s'
-            self.run_ddl(query, (table_name,))
+            query = sql.SQL('DROP TABLE {table_name} CASCADE').format(
+                table_name=sql.Identifier(table_name)
+            )
+            self.run_ddl(query)
 
     def insert(self, **fields) -> int:
         col_names = sql.SQL(', ').join(sql.Identifier(field) for field in fields.keys())
@@ -129,7 +133,7 @@ class Person(Table):
 
     def delete(self, row_id):
         # Удаление телефонов клиента
-        query = sql.SQL("DELETE FROM {person} where person = {person_id}").format(
+        query = sql.SQL("DELETE FROM {person} where person = {person_id} RETURNING id").format(
             person=sql.Identifier(Phone.__tablename__),
             person_id=sql.Placeholder()
         )
@@ -137,21 +141,25 @@ class Person(Table):
 
         # Удаление клиента
         res = super().delete(row_id)
-        return res[0][0]
+        return res
 
     def search(self, first_name=None, last_name=None, email=None, phone=None):
         args = {
             "first_name": first_name,
             "last_name": last_name,
             "email": email,
-            "phone": phone
+            "phone_number": phone
         }
         conditions = ["{field} = %s".format(field=field) for field, value in args.items() if value is not None]
         conditions = " AND ".join(conditions)
-        queue = "SELECT *" \
-                "  FROM {person} " + \
-                "       JOIN {phone} " if args['phone'] is not None else None + \
-                " WHERE {conditions} "
+        q = "SELECT p.id, p.first_name, p.last_name, p.email"\
+            "  FROM {person} p"
+        q += "       JOIN " + Phone.__tablename__ + "  ph on ph.person = p.id "if args['phone_number'] is not None else ""
+        q += " WHERE {conditions} " if len(conditions) != 0 else ""
+        queue = sql.SQL(q).format(
+            person=sql.Identifier(Person.__tablename__),
+            conditions=sql.SQL(conditions)
+        )
         res = super().run_dml(queue, tuple([value for value in args.values() if value is not None]))
         return res
 
@@ -184,11 +192,11 @@ class Phone(Table):
         if not Phone.__check_phone__(phone_number):
             raise ex.DbColumnTypeError(f'Phone number {phone_number} does not match pattern +79999999999')
         phone_id = super().insert(phone_number=phone_number, person=person_id)
-        return phone_id[0][0]
+        return phone_id
 
     def update(self, row_id: int, phone_number: str = None, person_id: int = None):
         user_id = super().update(row_id, phone_number=phone_number, person=person_id)
-        return user_id[0][0]
+        return user_id
 
     def delete_by_person(self, person_id):
         query = sql.SQL("DELETE FROM {person} where person = {person_id}").format(
@@ -202,9 +210,9 @@ class Phone(Table):
     def __get_conditions__(person_id, phone):
         if person_id is None and phone is None:
             return None
-        conditions = "person = %s" if person_id is not None else None
-        conditions += " AND " if person_id and phone else None
-        conditions += "phone = %s" if phone is not None else None
+        conditions = "person = %s" if person_id is not None else ""
+        conditions += " AND " if person_id and phone else ""
+        conditions += "phone_number = %s" if phone is not None else ""
         return conditions, tuple([el for el in [person_id, phone] if el is not None])
 
     def delete_by_fields(self, person_id=None, phone=None):
@@ -224,7 +232,7 @@ class Phone(Table):
         if conditions is None:
             return None
 
-        query = sql.SQL("SELECT id FROM {phones} where {conditions}").format(
+        query = sql.SQL("SELECT id, phone_number, person FROM {phones} where {conditions}").format(
             phones=sql.Identifier(self.table_name),
             conditions=sql.SQL(conditions)
         )
